@@ -38,7 +38,7 @@ type apiImpl struct {
 // Init sets up the endpoint processing.  There is nothing returned, other
 // than potntial errors, because the endpoint handling is configured in
 // the passed-in muxer.
-func Init(ctx context.Context, r *mux.Router, svc *service.LaffService, log *zap.SugaredLogger) error {
+func Init(ctx context.Context, r *mux.Router, svc *service.LaffService, limit int, log *zap.SugaredLogger) error {
 	ap := apiImpl{svc: svc, log: log}
 	r.HandleFunc("/", ap.generateJoke).Methods(http.MethodGet)
 	r.HandleFunc(jokeURL, ap.generateJoke).Methods(http.MethodGet)
@@ -47,7 +47,7 @@ func Init(ctx context.Context, r *mux.Router, svc *service.LaffService, log *zap
 	// As part of making the code "production-ready", we add a rate limiter to
 	// the middleware chain.
 	var limiterMiddleware = func(next http.Handler) http.Handler {
-		return tollboothV5.LimitFuncHandler(tollboothV5.NewLimiter(10, nil),
+		return tollboothV5.LimitFuncHandler(tollboothV5.NewLimiter(float64(limit), nil),
 			func(w http.ResponseWriter, r *http.Request) {
 				rc := r.WithContext(ctx)
 				next.ServeHTTP(w, rc)

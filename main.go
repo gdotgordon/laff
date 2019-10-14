@@ -25,13 +25,19 @@ var (
 	portNum  int    // listen port
 	logLevel string // zap log level
 	timeout  int    // server timeout in seconds
+	cache    int    // length of cache
+	workers  int    // number of cache worker goroutines
+	limit    int    // rate limiter requests/second
 )
 
 func init() {
-	flag.IntVar(&portNum, "port", 8080, "HTTP port number")
+	flag.IntVar(&portNum, "port", 5000, "HTTP port number")
 	flag.StringVar(&logLevel, "log", "production",
 		"log level: 'production', 'development'")
 	flag.IntVar(&timeout, "timeout", 30, "server timeout (seconds)")
+	flag.IntVar(&cache, "cache", 10, "length of name and joke caches")
+	flag.IntVar(&workers, "workers", 2, "number of cache worker goroutines")
+	flag.IntVar(&limit, "limit", 10, "rate limiter requests/second")
 }
 
 func main() {
@@ -56,7 +62,7 @@ func main() {
 	muxer := mux.NewRouter()
 
 	// Build the service.
-	svc, err := service.New(2, 10, log)
+	svc, err := service.New(workers, cache, log)
 	if err != nil {
 		log.Errorf("error creating service", err)
 		os.Exit(1)
@@ -64,7 +70,7 @@ func main() {
 	go svc.RunCache(ctx)
 
 	// Initialize the API layer.
-	if err := api.Init(ctx, muxer, svc, log); err != nil {
+	if err := api.Init(ctx, muxer, svc, limit, log); err != nil {
 		log.Errorf("Error initializing API layer", "error", err)
 		os.Exit(1)
 	}
@@ -94,8 +100,12 @@ func initLogging() (*zap.SugaredLogger, error) {
 	var err error
 
 	pdl := strings.ToLower(os.Getenv("LAFF_LOG_LEVEL"))
-	if strings.HasPrefix(pdl, "d") {
+	if strings.HasPrefix(pdl, "dev") {
 		logLevel = "development"
+	} else if strings.HasPrefix(logLevel, "dev") {
+		logLevel = "development"
+	} else {
+		logLevel = "production"
 	}
 
 	var cfg zap.Config

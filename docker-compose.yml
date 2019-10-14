@@ -1,0 +1,10 @@
+# This docker-compose script builds our program from scratch.
+version: "3.5"
+
+services:
+  laff:
+    build: .
+    ports:
+      - '5000:5000'
+    environment:
+      LAFF_LOG_LEVEL: 'production'

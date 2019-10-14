@@ -1,3 +1,6 @@
+// Package service implments the service that gets the output of the name
+// service, and sends that to the joke service, leading finally to a
+// "personalized" Chuck Norris joke.
 package service
 
 import (
@@ -8,6 +11,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 	"time"
 
@@ -19,16 +23,24 @@ const (
 	nameURL = "http://uinames.com/api/"
 	jokeURL = "http://api.icndb.com/jokes/random?"
 
-	maxErrs = 50
+	maxErrs = 50 // if the cache is erroring out consistently, shut it down.
+
+	dfltRetry = 90 // wait this many seconds to retry if retry header not parsed
 )
 
-type rateLimitError struct{}
-
-func (rle rateLimitError) Error() string {
-	return "rate limit exceeded"
+// rateLimitError signifies an HTTP 429 (too many requests) occurred, due
+// to the stingy limit of the name service.  We capture the value of the
+// retry wait from the HTTP Retry-After response header and delay that
+// amnount of time, plus some slop.
+type rateLimitError struct {
+	retry int
 }
 
-// LaffService is the implmentqation of the service that returns the jokes.
+func (rle rateLimitError) Error() string {
+	return fmt.Sprintf("rate limit exceeded, retry in %d seconds", rle.retry)
+}
+
+// LaffService is the implmentation of the service that returns the jokes.
 type LaffService struct {
 	client     *http.Client
 	nameChan   chan *NameResp
@@ -121,25 +133,29 @@ func (ls *LaffService) RunCache(ctx context.Context) {
 					// If we got an error, handle a rate limit error
 					// with a long delay.  For all other errors, increment
 					// the total error count.
-					switch err.(type) {
+					switch v := err.(type) {
 					case rateLimitError:
-						{
-							ls.log.Errorw("Fetch name rate limit error", "gorouitne", i, "error", err)
-							ticker := time.NewTicker(90 * time.Second)
-							defer ticker.Stop()
-							select {
-							case <-ctx.Done():
-								return
-							case <-ticker.C:
-								goto Loop
-							}
+						ls.log.Errorw("Fetch name rate limit error",
+							"goroutine", i, "error", err)
+						ticker := time.NewTicker(time.Duration(v.retry+5) * time.Second)
+						select {
+						case <-ctx.Done():
+							ticker.Stop()
+							return
+						case <-ticker.C:
+							ticker.Stop()
+							goto Loop
 						}
 					default:
-						ls.log.Errorw("Fetch name error", "gorouitne", i, "error", err)
+						ls.log.Errorw("Fetch name error",
+							"goroutine", i, "error", err)
 						ls.nameErrs++
 						if ls.nameErrs == maxErrs {
+							ls.log.Errorw("Too many errors on name fetch, shutting cache",
+								"count", maxErrs)
 							return
 						}
+						goto Loop
 					}
 				}
 
@@ -154,11 +170,12 @@ func (ls *LaffService) RunCache(ctx context.Context) {
 				// Calculated delay due to rate limiter.
 				{
 					ticker := time.NewTicker(sleepInterval)
-					defer ticker.Stop()
 					select {
 					case <-ctx.Done():
+						ticker.Stop()
 						return
 					case <-ticker.C:
+						ticker.Stop()
 					}
 				}
 			}
@@ -258,15 +275,24 @@ func (ls *LaffService) fetchName(ctx context.Context) (*NameResp, error) {
 		return nil, errors.New("unexpected empty body")
 	}
 
-	b, _ := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
+	defer resp.Body.Close()
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
 	if resp.StatusCode != http.StatusOK {
 
 		// Workaround for the regretful state of the rate limiter for the
 		// name service.
 		if resp.StatusCode == http.StatusTooManyRequests {
-			ls.log.Debugw("rate limit", "retry after", resp.Header.Get("Retry-After"))
-			return nil, rateLimitError{}
+			retry := resp.Header.Get("Retry-After")
+			ls.log.Debugw("rate limit", "retry after", retry)
+			var delay int = dfltRetry
+			v, err := strconv.Atoi(retry)
+			if err == nil {
+				delay = v
+			}
+			return nil, rateLimitError{retry: delay}
 		}
 
 		invErr := fmt.Errorf("invoking name fetch got HTTP status %d (%s)",
@@ -303,8 +329,12 @@ func (ls *LaffService) fetchJoke(ctx context.Context, name *NameResp) (string, e
 		return "", errors.New("unexpected empty body")
 	}
 
-	b, _ := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
+	defer resp.Body.Close()
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		invErr := fmt.Errorf("invoking joke fetch got HTTP status %d (%s)",
 			resp.StatusCode, http.StatusText(resp.StatusCode))
