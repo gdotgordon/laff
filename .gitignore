@@ -1,0 +1,5 @@
+# VS Code configuration files
+.vscode/**
+
+# binary
+laff
