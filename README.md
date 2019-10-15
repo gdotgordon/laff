@@ -5,7 +5,7 @@ Fetches a new utf-8 name, fetches a joke, inserts said name into said joke.
 
 Time spent: ~ 4 hours
 
-Note: I already had boilerplate code for the main server launching session and HTTP handler layers (plus the docker files).  The bulk of the time was spent on the service implementation, and a good chunk of that was spent trying to work around the rate limiter for the name service that has an unrealistic request cap for purposes of scalability from a given endpoint.
+Note: I already had boilerplate code for the main server launching session and HTTP handler layers (plus the docker files).  The bulk of the time was spent on the service implementation, and a good chunk of that was spent trying to work around the rate limiter issues from the name service.
 
 ## Introduction and Overview
 The solution here implements a web service to retrieve nerdy Chuck Norris jokes tailored to a random name.  It accomplishes this by first fetching a first and last name from a name service, and then passing that name to another "Chuck Norris" joke service, which inserts the name into the joke.  That joke is returned to the user's browser as plain UTF-8 text.
@@ -22,7 +22,9 @@ Here are the steps (a Go toolchain is required - I built with Go 1.13.1):
 3. Run `go build .`
 4. Start the program by running `./laff`.  I recommend setting log to "dev" level (Uber zap logging) by running `./laff -log=dev`.  Note the default port is 5000, but the `-port` flag can be used to change that.  There are other configurable options that you can see with `./laff -help`.
 
-Note in trying to determine whether the rate limiter issue was a platform issue, I also have a docker file and docker compose yaml, so if you want to run under Linux, you can also use `docker-compose up` and `docker-compose down` as an alternative.  I won't cover this approach further here, but it's been tested.
+In particular, with log level "dev", one can observe how the cache reacts in response to user requests, as well as see it in aciton in the background.
+
+Note in trying to determine whether the rate limiter issue was a platform-specific issue, I also added a docker file and docker compose yaml, so if you want to run under Linux, you can also use `docker-compose up` and `docker-compose down` as an alternative.  I won't cover this approach further here, but it's been tested.
 
 ## Invoking the endpoints
 There is really only one endpoint in the assignment, which can be invoked by a GET at the server address, for example with `curl http://localhost:5000`.  But to be more formal, this is the list of "standard" endpoints:
@@ -31,16 +33,16 @@ There is really only one endpoint in the assignment, which can be invoked by a G
 * `/v1/joke`   **GET** same as running the base url as above
 
 ## IMPORTANT NOTE!
-The name service at http://uinames.com/api/ imposes *severe* rate limiting to the point where this program can handle only a restricted load.  The code was painstakingly written to be highly robust, concurrent, and scalable, but alas, the rate limiter on the name service kicks in with HTTP 429 and Retry-After response headers after about 10-12 calls in well less than a minute.  I have put extensive debugging in my code, which indicates spurious invocations are not being done.  There is even a test case I wrote that does nothing but invoke the call, and it has the same limit, as do curl commands.  So the best I can do is present the code as written, which in my opinion, is a solid approach, and its written to work at scale.
+The name service at http://uinames.com/api/ imposes *severe* rate limiting to the point where this program can handle only a restricted load.  The code was painstakingly written to be highly robust, concurrent, and scalable, but alas, the rate limiter on the name service kicks in with HTTP 429 and Retry-After response headers after about 10-12 calls in well less than a minute.  I have put extensive debugging in my code, which indicates spurious invocations are not being done.  There is even a test case I wrote that does nothing but invoke the call, and it has the same limit, as do curl commands.  So the best I can do is present the code as written, which in my opinion, is a solid approach, and it's written to work at scale.
 
 ## Tests
-There are a few unit tests in the service package, but they mostly test using the active endpoints.  If I had more time given the expected time to be spent, I would have added some table-driven tests that talked to a mock server, as well as a full-on integration test.
+There are a few unit tests in the service package, but they mostly test using the active endpoints and just check that nothing failed.  If I had more time given the expected time to be spent, I would have added some table-driven tests that talked to a mock server, as well as a full-on integration test.
 
 ## The API
 
 HTTP return codes:
 * 200 (OK) for successful requests
-* 429 rate limiter issue
+* 429 (Too Many Requests) rate limiter issue
 * 500 (Internal Server Error) typically won't happen unless there is a system failure
 
 ### Architecture and Code Layout
@@ -66,11 +68,11 @@ The name cache is filled independently by one set of goroutines.  Naturally it w
 
 When the user invocation reaches the `Joke()` method, the implementation tries to use any available joke in the channel (if `select` says the channel can be read), and if that succeeds, it returns that joke to the caller.  If the is no joke available in the channel, the code first sees if perhaps a name is available in the name channel and starts with that.  If not, it invokes the name HTTP API.  In either case it then invokes the joke HTTP API to get the final text to be returned to the user.
 
-### Scalability
-The caches above are a big part of scalability.  Also I've inserted a configurable rate limiter (the "tollbooth" package) into the middleware layer.  Concurrency works due to each HTTP request being handled in a separate goroutine, along with the inherent thread-safety of channels.  I put some deep thought into this architecture and I think it is a good one, but despite that ... the rate limiter on the name service is unreasonably harsh.
+### Scalability and Production-Readiness
+The caches above are a big part of scalability.  Also I've inserted a configurable rate limiter (the "tollbooth" package) into the middleware layer.  Concurrency works due to each HTTP request being handled in a separate goroutine, along with the inherent thread-safety of channels.  The docker-related files are also part of being production ready, because the service ultimately needs to be deployed somewhere other than my Mac.  I put some deep thought into this architecture and I think it is a good one, but despite that ... the rate limiter on the name service is unreasonably harsh.
 
 ### Name Server Rate Limiter Causes Big Headaches
-As I said earlier, I have tested this extensively looking for bugs or design flaws, and the reality is that the name service at http://uinames.com/api/ does rate limiting by IP address in such a way that I am rate-limited out (HTTP 429) after around a dozen calls in 30-45 seconds.  There are all kinds of special sleep and timeout code in the name cache implementation to avoid the dreaded 429, and it is fine until you try and heavy-duty concurrent requests.  I have the rate limiter set at 10 calls/sec, but even that's way above what the name service allows.  I even tried tweaking the Go HTTP client to alter the number of cached hosts to no avail.  I hope you will evaluate the code for it's merits despite this issue.
+As I said earlier, I have tested this extensively looking for bugs or design flaws, and the reality is that the name service at http://uinames.com/api/ does rate limiting by IP address in the manner I described.  There are all kinds of special sleep and timeout code in the name cache implementation to avoid the dreaded 429, and it is fine until you try and heavy-duty concurrent requests.  I have the rate limiter set at 10 calls/sec, but even that's way above what the name service allows.  I even tried tweaking the Go HTTP client to alter the number of cached hosts to no avail.  So as stated, I hope you will evaluate the code for it's merits despite this issue.
 
 ## External packages used
 
