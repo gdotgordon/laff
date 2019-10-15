@@ -33,7 +33,9 @@ There is really only one endpoint in the assignment, which can be invoked by a G
 * `/v1/joke`   **GET** same as running the base url as above
 
 ## IMPORTANT NOTE!
-The name service at http://uinames.com/api/ imposes *severe* rate limiting to the point where this program can handle only a restricted load.  The code was painstakingly written to be highly robust, concurrent, and scalable, but alas, the rate limiter on the name service kicks in with HTTP 429 and Retry-After response headers after about 10-12 calls in well less than a minute.  I have put extensive debugging in my code, which indicates spurious invocations are not being done.  There is even a test case I wrote that does nothing but invoke the call, and it has the same limit, as do curl commands.  So the best I can do is present the code as written, which in my opinion, is a solid approach, and it's written to work at scale.
+The name service at http://uinames.com/api/ imposes *severe* rate limiting to the point where this program can handle only a restricted load.  The code was painstakingly written to be highly robust, concurrent, and scalable, but alas, the rate limiter on the name service kicks in with HTTP 429 and Retry-After response headers after about 10-12 calls in well less than a minute.
+
+Looking at the HTTP repsonse headers, we see: `X-Rate-Limit-Limit: 10.00`, and `X-Rate-Limit-Duration: 1`, so it appears we are actually limited in such a way. 
 
 ## Tests
 There are a few unit tests in the service package, but they mostly test using the active endpoints and just check that nothing failed.  If I had more time given the expected time to be spent, I would have added some table-driven tests that talked to a mock server, as well as a full-on integration test.
@@ -72,7 +74,7 @@ When the user invocation reaches the `Joke()` method, the implementation tries t
 The caches above are a big part of scalability.  Also I've inserted a configurable rate limiter (the "tollbooth" package) into the middleware layer.  Concurrency works due to each HTTP request being handled in a separate goroutine, along with the inherent thread-safety of channels.  The docker-related files are also part of being production ready, because the service ultimately needs to be deployed somewhere other than my Mac.  I put some deep thought into this architecture and I think it is a good one, but despite that ... the rate limiter on the name service is unreasonably harsh.
 
 ### Name Server Rate Limiter Causes Big Headaches
-As I said earlier, I have tested this extensively looking for bugs or design flaws, and the reality is that the name service at http://uinames.com/api/ does rate limiting by IP address in the manner I described.  There are all kinds of special sleep and timeout code in the name cache implementation to avoid the dreaded 429, and it is fine until you try and heavy-duty concurrent requests.  I have the rate limiter set at 10 calls/sec, but even that's way above what the name service allows.  I even tried tweaking the Go HTTP client to alter the number of cached hosts to no avail.  So as stated, I hope you will evaluate the code for it's merits despite this issue.
+As I said earlier, I have tested this extensively looking for bugs or design flaws, and the reality is that the name service at http://uinames.com/api/ does rate limiting by IP address in the manner I described.  There are all kinds of special sleep and timeout code in the name cache implementation to avoid the dreaded 429, and it is fine until you try and heavy-duty concurrent requests.  I have the rate limiter set at 10 calls/sec, but even that's way above what the name service allows.  I even tried tweaking the Go HTTP client to alter the number of cached hosts to no avail.  That said, I believe the architecture is in principle reasonable to solve the given problem.
 
 ## External packages used
 
