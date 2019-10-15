@@ -5,7 +5,7 @@ Fetches a new utf-8 name, fetches a joke, inserts said name into said joke.
 
 Time spent: ~ 4 hours
 
-Note: I already had boilerplate code for the main server launching session and HTTP handler layers (plus the docker files).  The bulk of the time was spent on the service implementation, and a good chunk of that was spent trying to work around the rate limiter for the name service that has an unrealistic request cap from a given endpoint.
+Note: I already had boilerplate code for the main server launching session and HTTP handler layers (plus the docker files).  The bulk of the time was spent on the service implementation, and a good chunk of that was spent trying to work around the rate limiter for the name service that has an unrealistic request cap for purposes of scalability from a given endpoint.
 
 ## Introduction and Overview
 The solution here implements a web service to retrieve nerdy Chuck Norris jokes tailored to a random name.  It accomplishes this by first fetching a first and last name from a name service, and then passing that name to another "Chuck Norris" joke service, which inserts the name into the joke.  That joke is returned to the user's browser as plain UTF-8 text.
