@@ -19,7 +19,7 @@ All external packages are built with go modules, but then vendored, so the compl
 Here are the steps (a Go toolchain is required - I built with Go 1.13.1):
 1. Unzip the zip file anywhere by running `unzip laff.zip`
 2. cd to directory "laff"
-3. Run `go build .`
+3. Run `go build .` Note I intentionally did not include the binary in the zip file to keep the size reasonable.
 4. Start the program by running `./laff`.  I recommend setting log to "dev" level (Uber zap logging) by running `./laff -log=dev`.  Note the default port is 5000, but the `-port` flag can be used to change that.  There are other configurable options that you can see with `./laff -help`.
 
 In particular, with log level "dev", one can observe how the cache reacts in response to user requests, as well as see it in aciton in the background.
