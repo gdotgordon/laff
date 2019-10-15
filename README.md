@@ -5,7 +5,7 @@ Fetches a new utf-8 name, fetches a joke, inserts said name into said joke.
 
 Time spent: ~ 4 hours
 
-Note: I already had written boilerplate code for the code to launch the  HTTP server and muxer/handler layers (plus the docker files), so this took part very little time to stand up.  The bulk of the time was spent on the service implementation, and a good chunk of that was spent trying to work around the rate limiter issues from the name service.
+Note: I already have a bunch of boilerplate code I've written to launch the  HTTP server and muxer/handler layers (plus the docker files and similar mock servers), so those parts took very little time to stand up.  The bulk of the time was spent on the service implementation, and a good chunk of that was spent trying to work around the rate limiter issues from the name service.
 
 ## Introduction and Overview
 The solution here implements a web service to retrieve nerdy Chuck Norris jokes tailored to a random name.  It accomplishes this by first fetching a first and last name from a name service, and then passing that name to another "Chuck Norris" joke service, which inserts the name into the joke.  That joke is returned to the user's browser as plain UTF-8 text.
@@ -19,8 +19,8 @@ All external packages are built with go modules, but then vendored, so the compl
 Here are the steps (a Go toolchain is required - I built with Go 1.13.1):
 1. Unzip the zip file anywhere by running `unzip laff.zip`
 2. cd to directory "laff"
-3. Run `go build .` Note I intentionally did not include the binary in the zip file to keep the size reasonable.
-4. Start the program by running `./laff`.  I recommend setting log to "dev" level (Uber zap logging) by running `./laff -log=dev`.  Note the default port is 5000, but the `-port` flag can be used to change that.  There are other configurable options that you can see with `./laff -help`.
+3. Run `go build .` Note I did not include the binary because I don't know what platform this will be run on.
+4. Start the program by running `./laff`.  I actually recommend setting log to "dev" level (Uber zap logging) by running `./laff -log=dev`.  Note the default port is 5000, but the `-port` flag can be used to change that.  There are other configurable options that you can see with `./laff -help`.
 
 In particular, with log level "dev", one can observe how the cache reacts in response to user requests, as well as see it in aciton in the background.
 
@@ -38,7 +38,7 @@ The name service at http://uinames.com/api/ imposes *severe* rate limiting to th
 Looking at the HTTP repsonse headers, we see: `X-Rate-Limit-Limit: 10.00`, and `X-Rate-Limit-Duration: 1`, so it appears we are actually limited in such a way. 
 
 ## Tests
-There are a few unit tests in the service package, but they mostly test using the active endpoints and just check that nothing failed.  If I had more time given the expected time to be spent, I would have added some table-driven tests that talked to a mock server, as well as a full-on integration test.
+There are a few unit tests in the service package that use a mock name and joke server.  Because I didn't have to worry about the name server rate limiter, I was able to really bang on the algorithm and make sure it could stand up to concurrency.  TestRunLoop is the one that has concurrent requests from 10 threads.  That said, the tests could be more complete, especially negative test cases, given more time to work on this.
 
 ## The API
 
