@@ -10,29 +10,28 @@ Note: I already had boilerplate code for the main server launching session and H
 ## Introduction and Overview
 The solution here implements a web service to retrieve nerdy Chuck Norris jokes tailored to a random name.  It accomplishes this by first fetching a first and last name from a name service, and then passing that name to another "Chuck Norris" joke service, which inserts the name into the joke.  That joke is returned to the user's browser as plain UTF-8 text.
 
-It's actually a little more complicated than that, because for performance, I have implmented two caches, one for names, and one for completed jokes, using Go buffered channels.  There are background worker goroutines that fill the caches to capacity (and then block).  When a user invokes the joke API, the name and jokes are fetched from the channels, but if there is nothing in the channel (the channel read would block), the API fetches these items itself directly.  Note the addition of the background workers should not affect the performance of incoming requests, as these client requests will not have to do HTTP invocations if the items are cached.  In fact, it should be a speedup in that the caches are filled during periods of inactivity.
+It's actually a little more complicated than that, because for performance, I have implemented two caches, one for names, and one for completed jokes, using Go buffered channels.  There are background worker goroutines that fill the caches to capacity (and then block).  When a user invokes the joke API, the name and jokes are fetched from the channels, but if there is nothing in the channel (the channel read would block), the API fetches these items itself directly.  Note the addition of the background workers should not affect the performance of incoming requests, as these client requests will not have to do HTTP invocations if the items are cached.  In fact, it should be a speedup in that the caches are filled during periods of inactivity.
 
 
 ## Accessing and running the Laff Service program
-
 All external packages are built with go modules, but then vendored, so the complete zip file is runnable.
 
-Here are the steps (a Go toolchaion is required (I built with Go 1.13.1):
+Here are the steps (a Go toolchain is required - I built with Go 1.13.1):
 1. Unzip the zip file anywhere by running `unzip laff.zip`
 2. cd to directory "laff"
-3.Run `go build .`
+3. Run `go build .`
 4. Start the program by running `./laff`.  I recommend setting log to "dev" level (Uber zap logging) by running `./laff -log=dev`.  Note the default port is 5000, but the `-port` flag can be used to change that.  There are other configurable options that you can see with `./laff -help`.
 
 Note in trying to determine whether the rate limiter issue was a platform issue, I also have a docker file and docker compose yaml, so if you want to run under Linux, you can also use `docker-compose up` and `docker-compose down` as an alternative.  I won't cover this approach further here, but it's been tested.
 
 ## Invoking the endpoints
-There is really only one endpoint in the assignment, which can be invoked by a GET at the server address, for example with `curl http://localhost:5000`.  But to be more formal, this is the list of "standard" endpoints.
-* 
+There is really only one endpoint in the assignment, which can be invoked by a GET at the server address, for example with `curl http://localhost:5000`.  But to be more formal, this is the list of "standard" endpoints:
+
 * `/v1/status` **GET** a liveness status check
-* `/v1/joke`   **GET** same as runniung the base url as above
+* `/v1/joke`   **GET** same as running the base url as above
 
 ## IMPORTANT NOTE!
-The name service at http://uinames.com/api/ imposes *severe* rate limiting to the point where this program can handle only a restricted load.  The code was painstakingly written to be highly robust, concurrent, and scalable, but alas, the rate limiter on the name service kicks in with HTTP 429 and Retry-After response headers after about 10-12 calls in a minute.  I have put extensive debugging in my code, which indicates spurious invocations are not being done.  There is even a test case I wrote that does nothing but invoke the call, and it has the same limit, as do curl commands.  So the best I can do is present the code as written, which in my opinion, is a solid approach.
+The name service at http://uinames.com/api/ imposes *severe* rate limiting to the point where this program can handle only a restricted load.  The code was painstakingly written to be highly robust, concurrent, and scalable, but alas, the rate limiter on the name service kicks in with HTTP 429 and Retry-After response headers after about 10-12 calls in well less than a minute.  I have put extensive debugging in my code, which indicates spurious invocations are not being done.  There is even a test case I wrote that does nothing but invoke the call, and it has the same limit, as do curl commands.  So the best I can do is present the code as written, which in my opinion, is a solid approach, and its written to work at scale.
 
 ## Tests
 There are a few unit tests in the service package, but they mostly test using the active endpoints.  If I had more time given the expected time to be spent, I would have added some table-driven tests that talked to a mock server, as well as a full-on integration test.
@@ -41,6 +40,7 @@ There are a few unit tests in the service package, but they mostly test using th
 
 HTTP return codes:
 * 200 (OK) for successful requests
+* 429 rate limiter issue
 * 500 (Internal Server Error) typically won't happen unless there is a system failure
 
 ### Architecture and Code Layout
@@ -51,17 +51,26 @@ As mentioned, Uber Zap logging is used. In a real production product, I would ha
 Here is a more-specific roadmap of the packages:
 
 ### *api* package
-Contains the HTTP handlers for the various endpoints. Primary responsibility is to unmarshal incoming requests, convert them to Go objects, and pass them off to the service layer, get the responses back from the service layer, convert any errors (or not) to appropriate HTTP status codes and send them back to the HTTP layer.  Note the external package `tollbooth` rate limiter is appied here.
+Contains the HTTP handlers for the various endpoints. Primary responsibility is to unmarshal incoming requests, convert them to Go objects, and pass them off to the service layer, get the responses back from the service layer, convert any errors (or not) to appropriate HTTP status codes and send them back to the HTTP layer.  Note the external package `tollbooth` rate limiter is applied here.
 
 ### *service* package
-The service implements the Laff service and is decoupled from the actual HTTP.  It provides a public API to get a joke, plus it implmentds internal methods to fetch from the name and joke services, as well as implmenting a cache on top of those two services.
+The service implements the Laff service and is decoupled from the actual HTTP.  It provides a public API to get a joke, plus it implements internal methods to fetch from the name and joke services, as well as implementing a cache on top of those two services.
 
 ## Architecture, Optimizations and Assumptions
 There is one service method `Joke()` that handles the user requests.  There is an internal method to fetch the name via HTTP, and another one to fetch a joke, plugging in the retrieved name.  The `Joke()` method can use those directly when needed, but an important feature of the architecture is the name and joke caches.
 
 ### Caches
+We observe that the names and jokes fetched from the respective services are not in any way time-dependent, so we can fetch names and jokes at any independent times and assemble them into final joke form whenever we choose.  Thus we have two caches, one for names, the other for assembled jokes that are pre-built as the system has time.  The caches are implemented as buffered channels (with a configurable buffer size), and a configurable number of worker goroutines populate the caches.
 
+The name cache is filled independently by one set of goroutines.  Naturally it will block writing the name to the cache until the buffer has room.  The other set of goroutines wait for a name to be available to pull off the name channel.  When a name is read, the Chuck Norris joke endpoint is invoked with that name, and that result is written to the joke buffered channel (as soon as the buffer has space).
 
+When the user invocation reaches the `Joke()` method, the implementation tries to use any available joke in the channel (if `select` says the channel can be read), and if that succeeds, it returns that joke to the caller.  If the is no joke available in the channel, the code first sees if perhaps a name is available in the name channel and starts with that.  If not, it invokes the name HTTP API.  In either case it then invokes the joke HTTP API to get the final text to be returned to the user.
+
+### Scalability
+The caches above are a big part of scalability.  Also I've inserted a configurable rate limiter (the "tollbooth" package) into the middleware layer.  Concurrency works due to each HTTP request being handled in a separate goroutine, along with the inherent thread-safety of channels.  I put some deep thought into this architecture and I think it is a good one, but despite that ... the rate limiter on the name service is unreasonably harsh.
+
+### Name Server Rate Limiter Causes Big Headaches
+As I said earlier, I have tested this extensively looking for bugs or design flaws, and the reality is that the name service at http://uinames.com/api/ does rate limiting by IP address in such a way that I am rate-limited out (HTTP 429) after around a dozen calls in 30-45 seconds.  There are all kinds of special sleep and timeout code in the name cache implementation to avoid the dreaded 429, and it is fine until you try and heavy-duty concurrent requests.  I have the rate limiter set at 10 calls/sec, but even that's way above what the name service allows.  I even tried tweaking the Go HTTP client to alter the number of cached hosts to no avail.  I hope you will evaluate the code for it's merits despite this issue.
 
 ## External packages used
 
