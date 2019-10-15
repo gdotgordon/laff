@@ -5,7 +5,7 @@ Fetches a new utf-8 name, fetches a joke, inserts said name into said joke.
 
 Time spent: ~ 4 hours
 
-Note: I already had boilerplate code for the main server launching session and HTTP handler layers (plus the docker files).  The bulk of the time was spent on the service implementation, and a good chunk of that was spent trying to work around the rate limiter issues from the name service.
+Note: I already had written boilerplate code for the code to launch the  HTTP server and muxer/handler layers (plus the docker files), so this took part very little time to stand up.  The bulk of the time was spent on the service implementation, and a good chunk of that was spent trying to work around the rate limiter issues from the name service.
 
 ## Introduction and Overview
 The solution here implements a web service to retrieve nerdy Chuck Norris jokes tailored to a random name.  It accomplishes this by first fetching a first and last name from a name service, and then passing that name to another "Chuck Norris" joke service, which inserts the name into the joke.  That joke is returned to the user's browser as plain UTF-8 text.
@@ -32,7 +32,7 @@ There is really only one endpoint in the assignment, which can be invoked by a G
 * `/v1/status` **GET** a liveness status check
 * `/v1/joke`   **GET** same as running the base url as above
 
-## IMPORTANT NOTE!
+## IMPORTANT - Name Service Rate Limiter Issues
 The name service at http://uinames.com/api/ imposes *severe* rate limiting to the point where this program can handle only a restricted load.  The code was painstakingly written to be highly robust, concurrent, and scalable, but alas, the rate limiter on the name service kicks in with HTTP 429 and Retry-After response headers after about 10-12 calls in well less than a minute.
 
 Looking at the HTTP repsonse headers, we see: `X-Rate-Limit-Limit: 10.00`, and `X-Rate-Limit-Duration: 1`, so it appears we are actually limited in such a way. 
@@ -55,12 +55,12 @@ As mentioned, Uber Zap logging is used. In a real production product, I would ha
 Here is a more-specific roadmap of the packages:
 
 ### *api* package
-Contains the HTTP handlers for the various endpoints. Primary responsibility is to unmarshal incoming requests, convert them to Go objects, and pass them off to the service layer, get the responses back from the service layer, convert any errors (or not) to appropriate HTTP status codes and send them back to the HTTP layer.  Note the external package `tollbooth` rate limiter is applied here.
+Contains the HTTP handlers for the various endpoints. Primary responsibility is to unmarshal incoming requests, convert them to Go objects, and pass them off to the service layer, get the responses back from the service layer, convert any errors (or not) to appropriate HTTP status codes and send them back to the HTTP layer.  Note the external package `tollbooth` rate limiter is applied here as a middleware layer.
 
 ### *service* package
 The service implements the Laff service and is decoupled from the actual HTTP.  It provides a public API to get a joke, plus it implements internal methods to fetch from the name and joke services, as well as implementing a cache on top of those two services.
 
-## Architecture, Optimizations and Assumptions
+## Architecture and Optimizations
 There is one service method `Joke()` that handles the user requests.  There is an internal method to fetch the name via HTTP, and another one to fetch a joke, plugging in the retrieved name.  The `Joke()` method can use those directly when needed, but an important feature of the architecture is the name and joke caches.
 
 ### Caches
@@ -68,13 +68,10 @@ We observe that the names and jokes fetched from the respective services are not
 
 The name cache is filled independently by one set of goroutines.  Naturally it will block writing the name to the cache until the buffer has room.  The other set of goroutines wait for a name to be available to pull off the name channel.  When a name is read, the Chuck Norris joke endpoint is invoked with that name, and that result is written to the joke buffered channel (as soon as the buffer has space).
 
-When the user invocation reaches the `Joke()` method, the implementation tries to use any available joke in the channel (if `select` says the channel can be read), and if that succeeds, it returns that joke to the caller.  If the is no joke available in the channel, the code first sees if perhaps a name is available in the name channel and starts with that.  If not, it invokes the name HTTP API.  In either case it then invokes the joke HTTP API to get the final text to be returned to the user.
+When the user invocation reaches the `Joke()` method, the implementation tries to use any available joke in the channel (if `select` says the channel can be read), and if that succeeds, it returns that joke to the caller.  If there is no joke available in the channel, the code first sees if a name is available in the name channel and starts with that.  If not, it invokes the name HTTP API.  In either case it then invokes the joke HTTP API to get the final text to be returned to the user.
 
 ### Scalability and Production-Readiness
-The caches above are a big part of scalability.  Also I've inserted a configurable rate limiter (the "tollbooth" package) into the middleware layer.  Concurrency works due to each HTTP request being handled in a separate goroutine, along with the inherent thread-safety of channels.  The docker-related files are also part of being production ready, because the service ultimately needs to be deployed somewhere other than my Mac.  I put some deep thought into this architecture and I think it is a good one, but despite that ... the rate limiter on the name service is unreasonably harsh.
-
-### Name Server Rate Limiter Causes Big Headaches
-As I said earlier, I have tested this extensively looking for bugs or design flaws, and the reality is that the name service at http://uinames.com/api/ does rate limiting by IP address in the manner I described.  There are all kinds of special sleep and timeout code in the name cache implementation to avoid the dreaded 429, and it is fine until you try and heavy-duty concurrent requests.  I have the rate limiter set at 10 calls/sec, but even that's way above what the name service allows.  I even tried tweaking the Go HTTP client to alter the number of cached hosts to no avail.  That said, I believe the architecture is in principle reasonable to solve the given problem.
+The caches above are a big part of scalability.  Also I've inserted a configurable rate limiter (the "tollbooth" package) into the middleware layer.  Concurrency works due to each HTTP request being handled in a separate goroutine, along with the inherent thread-safety of channels.  The docker-related files are also part of being production ready, because the service ultimately needs to be deployed somewhere other than my Mac.  I put some deep thought into this architecture and I think it is a good one, but despite that the rate limiter on the name service is too harsh in its limiting to effectively demonstrate the design.
 
 ## External packages used
 
