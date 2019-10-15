@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	pkgerr "github.com/pkg/errors"
@@ -28,15 +29,15 @@ const (
 	dfltRetry = 90 // wait this many seconds to retry if retry header not parsed
 )
 
-// rateLimitError signifies an HTTP 429 (too many requests) occurred, due
+// RateLimitError signifies an HTTP 429 (too many requests) occurred, due
 // to the stingy limit of the name service.  We capture the value of the
 // retry wait from the HTTP Retry-After response header and delay that
 // amnount of time, plus some slop.
-type rateLimitError struct {
+type RateLimitError struct {
 	retry int
 }
 
-func (rle rateLimitError) Error() string {
+func (rle RateLimitError) Error() string {
 	return fmt.Sprintf("rate limit exceeded, retry in %d seconds", rle.retry)
 }
 
@@ -47,10 +48,9 @@ type LaffService struct {
 	jokeChan   chan string
 	numWorkers int
 	bufLen     int
-	nameErrs   int
-	jokeErrs   int
+	nameErrs   int64
+	jokeErrs   int64
 	log        *zap.SugaredLogger
-	nameTries  int // Verification that we're not trying to fetch the name too often
 }
 
 // NameResp is to unmarshall the lookup of the name.
@@ -90,6 +90,7 @@ func New(numWorkers, bufLen int, logger *zap.SugaredLogger) (*LaffService, error
 	}
 
 	// Increase the number of pooled connections per host (the default is 2).
+	// See: http://tleyden.github.io/blog/2016/11/21/tuning-the-go-http-client-library-for-load-testing/
 	defaultTransport := *defaultTransportPointer // dereference it to get a copy of the struct that the pointer points to
 	defaultTransport.MaxIdleConns = 100
 	defaultTransport.MaxIdleConnsPerHost = 100
@@ -134,7 +135,7 @@ func (ls *LaffService) RunCache(ctx context.Context) {
 					// with a long delay.  For all other errors, increment
 					// the total error count.
 					switch v := err.(type) {
-					case rateLimitError:
+					case RateLimitError:
 						ls.log.Errorw("Fetch name rate limit error",
 							"goroutine", i, "error", err)
 						ticker := time.NewTicker(time.Duration(v.retry+5) * time.Second)
@@ -149,7 +150,7 @@ func (ls *LaffService) RunCache(ctx context.Context) {
 					default:
 						ls.log.Errorw("Fetch name error",
 							"goroutine", i, "error", err)
-						ls.nameErrs++
+						atomic.AddInt64(&ls.nameErrs, 1)
 						if ls.nameErrs == maxErrs {
 							ls.log.Errorw("Too many errors on name fetch, shutting cache",
 								"count", maxErrs)
@@ -202,7 +203,7 @@ func (ls *LaffService) RunCache(ctx context.Context) {
 					if joke, err = ls.fetchJoke(ctx, name); err != nil {
 						ls.log.Errorw("Fetch joke error", "gorouitne", i, "error", err)
 						fmt.Println(i, ": fetch joke error", err)
-						ls.jokeErrs++
+						atomic.AddInt64(&ls.jokeErrs, 1)
 						if ls.nameErrs == maxErrs {
 							return
 						}
@@ -265,7 +266,6 @@ func (ls *LaffService) fetchName(ctx context.Context) (*NameResp, error) {
 	}
 	req = req.WithContext(ctx)
 	req.Header.Add("Accept", "application/json")
-	ls.nameTries++
 	resp, err := ls.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -292,7 +292,7 @@ func (ls *LaffService) fetchName(ctx context.Context) (*NameResp, error) {
 			if err == nil {
 				delay = v
 			}
-			return nil, rateLimitError{retry: delay}
+			return nil, RateLimitError{retry: delay}
 		}
 
 		invErr := fmt.Errorf("invoking name fetch got HTTP status %d (%s)",

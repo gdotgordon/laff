@@ -46,7 +46,7 @@ func TestFetchName(t *testing.T) {
 
 func TestRunLoop(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	svc, err := New(2, 10, newDebugLogger())
+	svc, err := New(2, 2, newDebugLogger())
 	if err != nil {
 		t.Fatal("error creating service", err)
 	}
@@ -76,13 +76,12 @@ func TestRunLoop(t *testing.T) {
 	lwg.Wait()
 	cancel()
 	wg.Wait()
-	fmt.Println("name tries:", svc.nameTries)
 }
 
 // This test demonstrates that the rate limit occurs even in a simple sequence
 // of HTTP invokes.  It removes all other program logic to eliniate the possibilty
 // that an error somewhere else is causing the problem.
-func TestNameService(t *testing.T) {
+func DontTestNameService(t *testing.T) {
 	client := http.DefaultClient
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {

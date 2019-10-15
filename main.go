@@ -1,5 +1,5 @@
 // Package main runs the laff service.  It spins up an HTTP
-// server to handle requests, which are handled by the api package.
+// server to handle requests, which are processed by the api package.
 package main
 
 import (

@@ -1,7 +1,6 @@
-// Package api is the endpoint implementation for the laff service.
-// The HTTP endpoint implementations are here.  This package deals with
-// unmarshaling and marshaling payloads, dispatching to the service and
-// processing those errors.
+// Package api is the HTTP endpoint implementation for the laff service.
+// This package deals with unmarshaling and marshaling payloads, dispatching
+// to the service and processing those errors.
 package api
 
 import (
@@ -23,7 +22,7 @@ const (
 )
 
 // StatusResponse is the JSON returned for a liveness check as well as
-// for other status notifications such as a successful delete.
+// for other status notifications such errors.
 type StatusResponse struct {
 	Status string `json:"status"`
 }
@@ -75,7 +74,7 @@ func Init(ctx context.Context, r *mux.Router, svc *service.LaffService, limit in
 	return nil
 }
 
-// generateJoke is the HTTP GET callinvokedby the user.  It returns a
+// generateJoke is the HTTP GET call invoked by the user.  It returns a
 // plain text result, and works with utf-8 characters.
 func (a *apiImpl) generateJoke(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
@@ -85,7 +84,11 @@ func (a *apiImpl) generateJoke(w http.ResponseWriter, r *http.Request) {
 	}
 	msg, err := a.svc.Joke(r.Context())
 	if err != nil {
-		a.writeErrorResponse(w, http.StatusInternalServerError, err)
+		if _, ok := err.(service.RateLimitError); ok {
+			a.writeErrorResponse(w, http.StatusTooManyRequests, err)
+		} else {
+			a.writeErrorResponse(w, http.StatusInternalServerError, err)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
