@@ -51,6 +51,8 @@ type LaffService struct {
 	nameErrs   int64
 	jokeErrs   int64
 	log        *zap.SugaredLogger
+	nameURL    string // Make this a member so we can override
+	jokeURL    string // Make this a member so we can override
 }
 
 // NameResp is to unmarshall the lookup of the name.
@@ -103,6 +105,8 @@ func New(numWorkers, bufLen int, logger *zap.SugaredLogger) (*LaffService, error
 		numWorkers: numWorkers,
 		bufLen:     bufLen,
 		log:        logger,
+		nameURL:    nameURL,
+		jokeURL:    jokeURL,
 	}
 	return &ls, nil
 }
@@ -260,7 +264,7 @@ func (ls *LaffService) Joke(ctx context.Context) (string, error) {
 
 // fetchName invokes the HTTP call to get a name repsonse.
 func (ls *LaffService) fetchName(ctx context.Context) (*NameResp, error) {
-	req, err := http.NewRequest("GET", nameURL, nil)
+	req, err := http.NewRequest("GET", ls.nameURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +317,7 @@ func (ls *LaffService) fetchName(ctx context.Context) (*NameResp, error) {
 
 // fetchJoke fetches a joke, given a first and last name.
 func (ls *LaffService) fetchJoke(ctx context.Context, name *NameResp) (string, error) {
-	invURL := encodeJokeURL(name.Name, name.Surname)
+	invURL := ls.encodeJokeURL(name.Name, name.Surname)
 	req, err := http.NewRequest("GET", invURL, nil)
 	if err != nil {
 		return "", err
@@ -354,8 +358,8 @@ func (ls *LaffService) fetchJoke(ctx context.Context, name *NameResp) (string, e
 
 // encodeJokeURL escapes the query paramerters.  This is important
 // as a name could contain a character that needs escaping.
-func encodeJokeURL(firstName, lastName string) string {
-	jurl, err := url.Parse(jokeURL)
+func (ls *LaffService) encodeJokeURL(firstName, lastName string) string {
+	jurl, err := url.Parse(ls.jokeURL)
 	if err != nil {
 		panic("invalid joke url")
 	}
