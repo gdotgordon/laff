@@ -1,4 +1,4 @@
-// Package service implments the service that gets the output of the name
+// Package service implements the service that gets the output of the name
 // service, and sends that to the joke service, leading finally to a
 // "personalized" Chuck Norris joke.
 package service
@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -88,7 +88,7 @@ func New(numWorkers, bufLen int, logger *zap.SugaredLogger) (*LaffService, error
 	defaultRoundTripper := http.DefaultTransport
 	defaultTransportPointer, ok := defaultRoundTripper.(*http.Transport)
 	if !ok {
-		panic(fmt.Sprintf("defaultRoundTripper not an *http.Transport"))
+		panic("defaultRoundTripper not an *http.Transport")
 	}
 
 	// Increase the number of pooled connections per host (the default is 2).
@@ -280,7 +280,7 @@ func (ls *LaffService) fetchName(ctx context.Context) (*NameResp, error) {
 	}
 
 	defer resp.Body.Close()
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +334,7 @@ func (ls *LaffService) fetchJoke(ctx context.Context, name *NameResp) (string, e
 	}
 
 	defer resp.Body.Close()
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}

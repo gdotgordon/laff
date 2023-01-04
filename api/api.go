@@ -35,7 +35,7 @@ type apiImpl struct {
 }
 
 // Init sets up the endpoint processing.  There is nothing returned, other
-// than potntial errors, because the endpoint handling is configured in
+// than potential errors, because the endpoint handling is configured in
 // the passed-in muxer.
 func Init(ctx context.Context, r *mux.Router, svc *service.LaffService, limit int, log *zap.SugaredLogger) error {
 	ap := apiImpl{svc: svc, log: log}

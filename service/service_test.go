@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -149,7 +149,7 @@ func NewTestServer() *TestNameJokeServer {
 	ts := &TestNameJokeServer{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Body != nil {
-			ioutil.ReadAll(r.Body)
+			io.ReadAll(r.Body)
 			r.Body.Close()
 		}
 		if r.Method != http.MethodGet {
@@ -210,7 +210,6 @@ func NewTestServer() *TestNameJokeServer {
 		}
 
 		w.WriteHeader(http.StatusBadRequest)
-		return
 
 	}))
 

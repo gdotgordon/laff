@@ -1,27 +1,40 @@
 # github.com/didip/tollbooth v4.0.2+incompatible
-github.com/didip/tollbooth/errors
-github.com/didip/tollbooth/libstring
-github.com/didip/tollbooth/limiter
-# github.com/didip/tollbooth/v5 v5.1.0
+## explicit
+# github.com/didip/tollbooth/v5 v5.2.0
+## explicit; go 1.12
 github.com/didip/tollbooth/v5
-# github.com/gorilla/mux v1.7.3
+github.com/didip/tollbooth/v5/errors
+github.com/didip/tollbooth/v5/libstring
+github.com/didip/tollbooth/v5/limiter
+# github.com/gorilla/mux v1.8.0
+## explicit; go 1.12
 github.com/gorilla/mux
 # github.com/patrickmn/go-cache v0.0.0-20170418232947-7ac151875ffb
+## explicit
 github.com/patrickmn/go-cache
-# github.com/pkg/errors v0.8.1
+# github.com/pkg/errors v0.9.1
+## explicit
 github.com/pkg/errors
-# go.uber.org/atomic v1.4.0
+# github.com/stretchr/testify v1.8.0
+## explicit; go 1.13
+# go.uber.org/atomic v1.7.0
+## explicit; go 1.13
 go.uber.org/atomic
-# go.uber.org/multierr v1.2.0
+# go.uber.org/multierr v1.6.0
+## explicit; go 1.12
 go.uber.org/multierr
-# go.uber.org/zap v1.10.0
+# go.uber.org/zap v1.24.0
+## explicit; go 1.19
 go.uber.org/zap
 go.uber.org/zap/buffer
+go.uber.org/zap/internal
 go.uber.org/zap/internal/bufferpool
 go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
 # golang.org/x/net v0.0.0-20161007143504-f4b625ec9b21
+## explicit
 golang.org/x/net/context
 # golang.org/x/time v0.0.0-20160926182426-711ca1cb8763
+## explicit
 golang.org/x/time/rate

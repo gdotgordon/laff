@@ -1,14 +1,18 @@
 module github.com/gdotgordon/laff
 
-go 1.13
+go 1.18
 
 require (
-	github.com/didip/tollbooth v4.0.2+incompatible // indirect
-	github.com/didip/tollbooth/v5 v5.1.0
-	github.com/gorilla/mux v1.7.3
-	github.com/pkg/errors v0.8.1
-	github.com/stretchr/testify v1.4.0 // indirect
-	go.uber.org/atomic v1.4.0 // indirect
-	go.uber.org/multierr v1.2.0 // indirect
-	go.uber.org/zap v1.10.0
+	github.com/didip/tollbooth/v5 v5.2.0
+	github.com/gorilla/mux v1.8.0
+	github.com/pkg/errors v0.9.1
+	go.uber.org/zap v1.24.0
+)
+
+require (
+	github.com/patrickmn/go-cache v0.0.0-20170418232947-7ac151875ffb // indirect
+	go.uber.org/atomic v1.7.0 // indirect
+	go.uber.org/multierr v1.6.0 // indirect
+	golang.org/x/net v0.0.0-20161007143504-f4b625ec9b21 // indirect
+	golang.org/x/time v0.0.0-20160926182426-711ca1cb8763 // indirect
 )
