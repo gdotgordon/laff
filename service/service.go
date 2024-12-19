@@ -93,11 +93,11 @@ func New(numWorkers, bufLen int, logger *zap.SugaredLogger) (*LaffService, error
 
 	// Increase the number of pooled connections per host (the default is 2).
 	// See: http://tleyden.github.io/blog/2016/11/21/tuning-the-go-http-client-library-for-load-testing/
-	defaultTransport := *defaultTransportPointer // dereference it to get a copy of the struct that the pointer points to
+	defaultTransport := defaultTransportPointer // dereference it to get a copy of the struct that the pointer points to
 	defaultTransport.MaxIdleConns = 100
 	defaultTransport.MaxIdleConnsPerHost = 100
 
-	c := &http.Client{Transport: &defaultTransport}
+	c := &http.Client{Transport: defaultTransport}
 	ls := LaffService{
 		client:     c,
 		nameChan:   make(chan *NameResp, bufLen),
